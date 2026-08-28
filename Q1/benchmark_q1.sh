@@ -16,14 +16,13 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
-# Launcher: srun inside a SLURM allocation, mpirun otherwise.
+# Launcher.  HPC-X / OpenMPI's own mpirun is used in every case: inside a
+# SLURM allocation it picks the node list up from the environment on its own.
+# srun is deliberately NOT used -- it launches through SLURM's PMI, which the
+# HPC-X build cannot attach to, and MPI_Init then aborts on a NULL communicator.
 launch() {
     local np=$1; shift
-    if [ -n "${SLURM_JOB_ID:-}" ]; then
-        srun --ntasks="$np" --cpu-bind=cores "$@"
-    else
-        mpirun -np "$np" --oversubscribe "$@"
-    fi
+    mpirun -np "$np" --oversubscribe "$@"
 }
 
 echo "label,m,n,p,P,t_dist,t_comp,t_gather,t_total,comm_pct,verify" > "$OUT"
