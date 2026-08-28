@@ -1,0 +1,15 @@
+Submit a job:
+    sbatch sample_slurm.sh
+
+Check status:
+    squeue -u $USER
+
+Cancel a job:
+    scancel <JOB_ID>
+
+View job details:
+    scontrol show job <JOB_ID>
+
+View output / errors:
+    cat job_<JOB_ID>.log
+    cat job_<JOB_ID>.err
