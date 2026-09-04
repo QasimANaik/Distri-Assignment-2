@@ -23,6 +23,7 @@
 
 #include <mpi.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,6 +32,8 @@
 #include <random>
 #include <string>
 #include <vector>
+
+using namespace std;
 
 namespace {
 
@@ -41,12 +44,12 @@ namespace {
 // legitimately receive zero rows; they still take part in every collective.
 // ---------------------------------------------------------------------------
 struct RowSplit {
-    std::vector<int> rows;      // rows owned by each rank
-    std::vector<int> row_off;   // index of each rank's first row in A / C
-    std::vector<int> cnt_a;     // Scatterv counts for A, in elements
-    std::vector<int> dsp_a;
-    std::vector<int> cnt_c;     // Gatherv counts for C, in elements
-    std::vector<int> dsp_c;
+    vector<int> rows;      // rows owned by each rank
+    vector<int> row_off;   // index of each rank's first row in A / C
+    vector<int> cnt_a;     // Scatterv counts for A, in elements
+    vector<int> dsp_a;
+    vector<int> cnt_c;     // Gatherv counts for C, in elements
+    vector<int> dsp_c;
 };
 
 RowSplit make_split(int m, int n, int p, int P) {
@@ -81,9 +84,9 @@ RowSplit make_split(int m, int n, int p, int P) {
 // along their rows, which is the cache-friendly direction for row-major
 // storage.
 // ---------------------------------------------------------------------------
-void rowrow_multiply(const std::vector<int>& A, const std::vector<int>& B,
-                     std::vector<int>& C, int local_rows, int n, int p) {
-    std::fill(C.begin(), C.end(), 0);
+void rowrow_multiply(const vector<int>& A, const vector<int>& B, vector<int>& C,
+                     int local_rows, int n, int p) {
+    fill(C.begin(), C.end(), 0);
     for (int i = 0; i < local_rows; ++i) {
         const int* a_row = &A[static_cast<size_t>(i) * n];
         int*       c_row = &C[static_cast<size_t>(i) * p];
@@ -99,8 +102,8 @@ void rowrow_multiply(const std::vector<int>& A, const std::vector<int>& B,
 }
 
 // Straightforward serial multiply, used only by --verify on rank 0.
-void serial_multiply(const std::vector<int>& A, const std::vector<int>& B,
-                     std::vector<int>& C, int m, int n, int p) {
+void serial_multiply(const vector<int>& A, const vector<int>& B, vector<int>& C,
+                     int m, int n, int p) {
     C.assign(static_cast<size_t>(m) * p, 0);
     for (int i = 0; i < m; ++i) {
         for (int k = 0; k < n; ++k) {
@@ -113,8 +116,8 @@ void serial_multiply(const std::vector<int>& A, const std::vector<int>& B,
     }
 }
 
-bool read_matrix(const std::string& path, std::vector<int>& M, int& rows, int& cols) {
-    std::ifstream in(path);
+bool read_matrix(const string& path, vector<int>& M, int& rows, int& cols) {
+    ifstream in(path);
     if (!in) return false;
     if (!(in >> rows >> cols)) return false;
     if (rows < 0 || cols < 0) return false;
@@ -125,30 +128,30 @@ bool read_matrix(const std::string& path, std::vector<int>& M, int& rows, int& c
     return true;
 }
 
-void fill_random(std::vector<int>& M, size_t count, unsigned seed) {
+void fill_random(vector<int>& M, size_t count, unsigned seed) {
     M.resize(count);
-    std::mt19937 rng(seed);
-    std::uniform_int_distribution<int> dist(-9, 9);
+    mt19937 rng(seed);
+    uniform_int_distribution<int> dist(-9, 9);
     for (size_t i = 0; i < count; ++i) M[i] = dist(rng);
 }
 
-void print_matrix(const std::vector<int>& M, int rows, int cols) {
+void print_matrix(const vector<int>& M, int rows, int cols) {
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
-            std::printf("%d%c", M[static_cast<size_t>(i) * cols + j],
-                        j + 1 == cols ? '\n' : ' ');
+            printf("%d%c", M[static_cast<size_t>(i) * cols + j],
+                   j + 1 == cols ? '\n' : ' ');
         }
     }
 }
 
 [[noreturn]] void usage_and_exit(int rank) {
     if (rank == 0) {
-        std::fprintf(stderr,
-            "usage: matmul_rowrow --gen m n p [--seed S] [--reps R] [--verify] [--print] [--csv LABEL]\n"
-            "       matmul_rowrow --file A.txt B.txt [--reps R] [--verify] [--print] [--csv LABEL]\n");
+        fprintf(stderr,
+                "usage: matmul_rowrow --gen m n p [--seed S] [--reps R] [--verify] [--print] [--csv LABEL]\n"
+                "       matmul_rowrow --file A.txt B.txt [--reps R] [--verify] [--print] [--csv LABEL]\n");
     }
     MPI_Abort(MPI_COMM_WORLD, 2);
-    std::exit(2);
+    exit(2);
 }
 
 }  // namespace
@@ -164,23 +167,23 @@ int main(int argc, char** argv) {
     bool gen = false, from_file = false, verify = false, want_print = false;
     int m = 0, n = 0, p = 0, reps = 1;
     unsigned seed = 42;
-    std::string fa, fb, label;
+    string fa, fb, label;
 
     for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
+        const string arg = argv[i];
         if (arg == "--gen" && i + 3 < argc) {
             gen = true;
-            m = std::atoi(argv[++i]);
-            n = std::atoi(argv[++i]);
-            p = std::atoi(argv[++i]);
+            m = atoi(argv[++i]);
+            n = atoi(argv[++i]);
+            p = atoi(argv[++i]);
         } else if (arg == "--file" && i + 2 < argc) {
             from_file = true;
             fa = argv[++i];
             fb = argv[++i];
         } else if (arg == "--seed" && i + 1 < argc) {
-            seed = static_cast<unsigned>(std::strtoul(argv[++i], nullptr, 10));
+            seed = static_cast<unsigned>(strtoul(argv[++i], nullptr, 10));
         } else if (arg == "--reps" && i + 1 < argc) {
-            reps = std::atoi(argv[++i]);
+            reps = atoi(argv[++i]);
         } else if (arg == "--csv" && i + 1 < argc) {
             label = argv[++i];
         } else if (arg == "--verify") {
@@ -195,26 +198,26 @@ int main(int argc, char** argv) {
     if (reps < 1) reps = 1;
 
     // ---------------- rank 0 obtains A and B ----------------
-    std::vector<int> A, B, C;
+    vector<int> A, B, C;
     if (rank == 0) {
         if (from_file) {
             int ar = 0, ac = 0, br = 0, bc = 0;
             if (!read_matrix(fa, A, ar, ac)) {
-                std::fprintf(stderr, "error: cannot read %s\n", fa.c_str());
+                fprintf(stderr, "error: cannot read %s\n", fa.c_str());
                 MPI_Abort(MPI_COMM_WORLD, 3);
             }
             if (!read_matrix(fb, B, br, bc)) {
-                std::fprintf(stderr, "error: cannot read %s\n", fb.c_str());
+                fprintf(stderr, "error: cannot read %s\n", fb.c_str());
                 MPI_Abort(MPI_COMM_WORLD, 3);
             }
             if (ac != br) {
-                std::fprintf(stderr, "error: inner dimensions disagree (%d vs %d)\n", ac, br);
+                fprintf(stderr, "error: inner dimensions disagree (%d vs %d)\n", ac, br);
                 MPI_Abort(MPI_COMM_WORLD, 3);
             }
             m = ar; n = ac; p = bc;
         } else {
             if (m <= 0 || n <= 0 || p <= 0) {
-                std::fprintf(stderr, "error: m, n, p must all be positive\n");
+                fprintf(stderr, "error: m, n, p must all be positive\n");
                 MPI_Abort(MPI_COMM_WORLD, 3);
             }
             fill_random(A, static_cast<size_t>(m) * n, seed);
@@ -232,8 +235,8 @@ int main(int argc, char** argv) {
 
     // Zero-row ranks (P > m) still allocate a 1-element buffer so that &v[0] is
     // always a valid pointer to hand to MPI; the count passed is 0 regardless.
-    std::vector<int> local_A(std::max<size_t>(1, static_cast<size_t>(local_rows) * n));
-    std::vector<int> local_C(std::max<size_t>(1, static_cast<size_t>(local_rows) * p));
+    vector<int> local_A(max<size_t>(1, static_cast<size_t>(local_rows) * n));
+    vector<int> local_C(max<size_t>(1, static_cast<size_t>(local_rows) * p));
     if (rank != 0) B.resize(static_cast<size_t>(n) * p);
     if (rank == 0) C.resize(static_cast<size_t>(m) * p);
 
@@ -282,7 +285,7 @@ int main(int argc, char** argv) {
     int ok = 1;
     if (rank == 0) {
         if (verify) {
-            std::vector<int> ref;
+            vector<int> ref;
             serial_multiply(A, B, ref, m, n, p);
             ok = (ref == C) ? 1 : 0;          // integer entries compare exactly
         }
@@ -293,19 +296,19 @@ int main(int argc, char** argv) {
         if (!label.empty()) {
             // CSV row for the benchmark driver:
             // label,m,n,p,P,t_dist,t_comp,t_gather,t_total,comm_pct,verify
-            std::printf("%s,%d,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.2f,%s\n",
-                        label.c_str(), m, n, p, P,
-                        max_t[0], max_t[1], max_t[2], total,
-                        total > 0.0 ? 100.0 * comm / total : 0.0,
-                        verify ? (ok ? "PASS" : "FAIL") : "-");
+            printf("%s,%d,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.2f,%s\n",
+                   label.c_str(), m, n, p, P,
+                   max_t[0], max_t[1], max_t[2], total,
+                   total > 0.0 ? 100.0 * comm / total : 0.0,
+                   verify ? (ok ? "PASS" : "FAIL") : "-");
         } else {
-            std::printf("m=%d n=%d p=%d P=%d\n", m, n, p, P);
-            std::printf("dist=%.6f s  comp=%.6f s  gather=%.6f s  total=%.6f s\n",
-                        max_t[0], max_t[1], max_t[2], total);
-            std::printf("comm=%.2f%%  comp=%.2f%%\n",
-                        total > 0.0 ? 100.0 * comm / total : 0.0,
-                        total > 0.0 ? 100.0 * max_t[1] / total : 0.0);
-            if (verify) std::printf("verify=%s\n", ok ? "PASS" : "FAIL");
+            printf("m=%d n=%d p=%d P=%d\n", m, n, p, P);
+            printf("dist=%.6f s  comp=%.6f s  gather=%.6f s  total=%.6f s\n",
+                   max_t[0], max_t[1], max_t[2], total);
+            printf("comm=%.2f%%  comp=%.2f%%\n",
+                   total > 0.0 ? 100.0 * comm / total : 0.0,
+                   total > 0.0 ? 100.0 * max_t[1] / total : 0.0);
+            if (verify) printf("verify=%s\n", ok ? "PASS" : "FAIL");
         }
 
         if (want_print) print_matrix(C, m, p);
